@@ -25,6 +25,7 @@ public class CCMod {
     public CCMod(FMLJavaModLoadingContext context) {
         IEventBus modEventBus = context.getModEventBus();
 
+        // Register existing mod components
         ModCreativeModeTabs.register(modEventBus);
         ModItems.register(modEventBus);
 
@@ -35,6 +36,7 @@ public class CCMod {
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {
+        LOGGER.info("Cozy Clothing Mod common setup complete!");
     }
 
     private void addCreative(BuildCreativeModeTabContentsEvent event) {

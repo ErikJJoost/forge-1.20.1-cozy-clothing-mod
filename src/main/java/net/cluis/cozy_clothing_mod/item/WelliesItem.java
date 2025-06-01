@@ -7,21 +7,11 @@ import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ArmorMaterial;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.material.FluidState;
-import net.minecraft.tags.FluidTags;
-import net.minecraft.world.entity.ai.attributes.AttributeInstance;
-import net.minecraft.world.entity.ai.attributes.AttributeModifier;
-import net.minecraft.world.entity.ai.attributes.Attributes;
-import java.util.UUID;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 
 public class WelliesItem extends ArmorItem {
-    // Unique UUID for the speed modifier - using a more descriptive name
-    private static final UUID WELLIES_SPEED_UUID = UUID.fromString("91AEAA56-376B-4498-935B-2F7F68070635");
-    private static final String WELLIES_SPEED_NAME = "Wellies Shallow Water Speed";
-    private static final double SPEED_BOOST_MULTIPLIER = 0.3; // 30% speed increase
-
-    // Cache the last water state to avoid unnecessary attribute modifications
+    // Cache the last water state
     private boolean wasInShallowWater = false;
 
     public WelliesItem(ArmorMaterial material, Type type, Properties properties) {
@@ -34,7 +24,7 @@ public class WelliesItem extends ArmorItem {
     }
 
     /**
-     * Called every tick for items in inventory - optimized to only check when boots are equipped
+     * Called every tick for items in inventory - hijacks Depth Strider enchantment
      */
     @Override
     public void inventoryTick(ItemStack stack, Level level, Entity entity, int slotId, boolean isSelected) {
@@ -45,9 +35,9 @@ public class WelliesItem extends ArmorItem {
         // Only process if this item is actually equipped as boots
         ItemStack equippedBoots = player.getItemBySlot(EquipmentSlot.FEET);
         if (equippedBoots != stack) {
-            // If this stack is not the equipped boots, ensure no speed boost is applied
+            // If this stack is not the equipped boots, remove any fake enchantments
             if (wasInShallowWater) {
-                removeSpeedBoost(player);
+                removeFakeDepthStrider(stack);
                 wasInShallowWater = false;
             }
             return;
@@ -56,99 +46,94 @@ public class WelliesItem extends ArmorItem {
         // Now we know these wellies are equipped
         boolean currentlyInShallowWater = isInShallowWater(player, level);
 
-        // Only modify attributes when the state changes to avoid unnecessary operations
+        // Debug output every 20 ticks (once per second)
+        if (level.getGameTime() % 20 == 0) {
+            System.out.println("Wellies Debug - InWater: " + currentlyInShallowWater +
+                    ", WasInWater: " + wasInShallowWater +
+                    ", PlayerInWater: " + player.isInWater());
+        }
+
+        // Apply/remove fake Depth Strider enchantment
         if (currentlyInShallowWater && !wasInShallowWater) {
-            applySpeedBoost(player);
+            applyFakeDepthStrider(stack);
             wasInShallowWater = true;
+            System.out.println("Applied fake Depth Strider III to wellies!");
         } else if (!currentlyInShallowWater && wasInShallowWater) {
-            removeSpeedBoost(player);
+            removeFakeDepthStrider(stack);
             wasInShallowWater = false;
+            System.out.println("Removed fake Depth Strider from wellies!");
         }
 
         super.inventoryTick(stack, level, entity, slotId, isSelected);
     }
 
     /**
-     * Apply speed boost using attribute modifiers
+     * Adds a fake Depth Strider III enchantment to the boots
      */
-    private void applySpeedBoost(Player player) {
-        AttributeInstance speedAttribute = player.getAttribute(Attributes.MOVEMENT_SPEED);
-        if (speedAttribute != null && speedAttribute.getModifier(WELLIES_SPEED_UUID) == null) {
-            AttributeModifier speedModifier = new AttributeModifier(
-                    WELLIES_SPEED_UUID,
-                    WELLIES_SPEED_NAME,
-                    SPEED_BOOST_MULTIPLIER,
-                    AttributeModifier.Operation.MULTIPLY_TOTAL
-            );
-            speedAttribute.addPermanentModifier(speedModifier);
-        }
-    }
+    private void applyFakeDepthStrider(ItemStack stack) {
+        CompoundTag tag = stack.getOrCreateTag();
+        ListTag enchantments = tag.getList("Enchantments", 10);
 
-    /**
-     * Remove speed boost
-     */
-    private void removeSpeedBoost(Player player) {
-        AttributeInstance speedAttribute = player.getAttribute(Attributes.MOVEMENT_SPEED);
-        if (speedAttribute != null) {
-            speedAttribute.removeModifier(WELLIES_SPEED_UUID);
-        }
-    }
-
-    /**
-     * Enhanced shallow water detection
-     * Checks if player is in water that's roughly 1 block deep
-     */
-    private boolean isInShallowWater(Player player, Level level) {
-        BlockPos playerFeet = player.blockPosition();
-        BlockPos playerHead = playerFeet.above();
-
-        // Get fluid states at different positions
-        FluidState fluidAtFeet = level.getFluidState(playerFeet);
-        FluidState fluidAtHead = level.getFluidState(playerHead);
-
-        // Check if player's feet are in water (using fluid tags for better compatibility)
-        boolean feetInWater = fluidAtFeet.is(FluidTags.WATER) && fluidAtFeet.getAmount() >= 4; // At least half a block high
-
-        // Check if player's head is NOT in deep water
-        boolean headNotInDeepWater = !fluidAtHead.is(FluidTags.WATER) || fluidAtHead.getAmount() < 8; // Less than full block
-
-        // Additional safety check: ensure player is actually touching water (not floating above)
-        boolean actuallyTouchingWater = player.isInWater() || player.isUnderWater();
-
-        // Player is in shallow water if:
-        // 1. Their feet are in water (at least half a block)
-        // 2. Their head is not in deep water (allowing for shallow splashing)
-        // 3. They are actually touching water according to the game's detection
-        return feetInWater && headNotInDeepWater && actuallyTouchingWater;
-    }
-
-    /**
-     * Alternative method for even more precise shallow water detection
-     * Uncomment and use this if you want stricter "exactly 1 block deep" behavior
-     */
-    /*
-    private boolean isInExactlyOneBlockDeepWater(Player player, Level level) {
-        BlockPos playerPos = player.blockPosition();
-
-        // Check water at player position
-        FluidState playerFluid = level.getFluidState(playerPos);
-        boolean playerInWater = playerFluid.is(FluidTags.WATER) && playerFluid.getAmount() >= 6;
-
-        // Check no water above player
-        FluidState aboveFluid = level.getFluidState(playerPos.above());
-        boolean noWaterAbove = !aboveFluid.is(FluidTags.WATER) || aboveFluid.getAmount() < 2;
-
-        // Check solid ground below (within 2 blocks)
-        boolean solidGroundNearby = false;
-        for (int i = 0; i <= 2; i++) {
-            BlockPos checkPos = playerPos.below(i);
-            if (level.getBlockState(checkPos).isSolidRender(level, checkPos)) {
-                solidGroundNearby = true;
+        // Check if Depth Strider is already present
+        boolean hasDepthStrider = false;
+        for (int i = 0; i < enchantments.size(); i++) {
+            CompoundTag enchant = enchantments.getCompound(i);
+            String id = enchant.getString("id");
+            if ("minecraft:depth_strider".equals(id) || "depth_strider".equals(id)) {
+                // Update existing Depth Strider to level III
+                enchant.putShort("lvl", (short) 3);
+                hasDepthStrider = true;
                 break;
             }
         }
 
-        return playerInWater && noWaterAbove && solidGroundNearby;
+        // If no Depth Strider exists, add it
+        if (!hasDepthStrider) {
+            CompoundTag depthStriderTag = new CompoundTag();
+            depthStriderTag.putString("id", "minecraft:depth_strider");
+            depthStriderTag.putShort("lvl", (short) 3);
+            enchantments.add(depthStriderTag);
+        }
+
+        tag.put("Enchantments", enchantments);
+        stack.setTag(tag);
     }
-    */
+
+    /**
+     * Removes the fake Depth Strider enchantment from the boots
+     */
+    private void removeFakeDepthStrider(ItemStack stack) {
+        CompoundTag tag = stack.getTag();
+        if (tag == null) return;
+
+        ListTag enchantments = tag.getList("Enchantments", 10);
+
+        // Remove Depth Strider enchantment
+        for (int i = enchantments.size() - 1; i >= 0; i--) {
+            CompoundTag enchant = enchantments.getCompound(i);
+            String id = enchant.getString("id");
+            if ("minecraft:depth_strider".equals(id) || "depth_strider".equals(id)) {
+                enchantments.remove(i);
+                break;
+            }
+        }
+
+        tag.put("Enchantments", enchantments);
+        stack.setTag(tag);
+    }
+
+    /**
+     * Simplified water detection - any water contact
+     */
+    private boolean isInShallowWater(Player player, Level level) {
+        // Just check if player is in any water
+        boolean inWater = player.isInWater();
+
+        // Debug output
+        if (inWater) {
+            System.out.println("Player in water - applying Depth Strider effect");
+        }
+
+        return inWater;
+    }
 }
