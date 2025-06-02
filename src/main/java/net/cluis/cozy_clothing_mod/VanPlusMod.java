@@ -17,16 +17,15 @@ import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.slf4j.Logger;
 
-@Mod(CCMod.MOD_ID)
-public class CCMod {
+@Mod(VanPlusMod.MOD_ID)
+public class VanPlusMod {
     public static final String MOD_ID = "cozy_clothing_mod";
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public CCMod(FMLJavaModLoadingContext context) {
+    public VanPlusMod(FMLJavaModLoadingContext context) {
         IEventBus modEventBus = context.getModEventBus();
 
         // Register existing mod components
-        ModCreativeModeTabs.register(modEventBus);
         ModItems.register(modEventBus);
 
         modEventBus.addListener(this::commonSetup);
