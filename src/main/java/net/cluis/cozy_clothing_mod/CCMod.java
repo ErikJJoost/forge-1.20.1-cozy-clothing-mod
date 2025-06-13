@@ -3,6 +3,7 @@ package net.cluis.cozy_clothing_mod;
 import com.mojang.logging.LogUtils;
 import net.cluis.cozy_clothing_mod.item.ModCreativeModeTabs;
 import net.cluis.cozy_clothing_mod.item.ModItems;
+import net.cluis.cozy_clothing_mod.block.ModBlocks;
 
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
@@ -28,6 +29,7 @@ public class CCMod {
         // Register existing mod components
         ModCreativeModeTabs.register(modEventBus);
         ModItems.register(modEventBus);
+        ModBlocks.register(modEventBus); // Fixed: ModBlocks not ModBlock
 
         modEventBus.addListener(this::commonSetup);
 
@@ -49,8 +51,7 @@ public class CCMod {
     @Mod.EventBusSubscriber(modid = MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
     public static class ClientModEvents {
         @SubscribeEvent
-        public static void onClientSetup(FMLClientSetupEvent event)
-        {
+        public static void onClientSetup(FMLClientSetupEvent event) {
             LOGGER.info("HELLO FROM CLIENT SETUP");
             LOGGER.info("MINECRAFT NAME >> {}", Minecraft.getInstance().getUser().getName());
         }

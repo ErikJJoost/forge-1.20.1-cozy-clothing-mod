@@ -2,17 +2,26 @@ package net.cluis.cozy_clothing_mod.item;
 
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ArmorMaterial;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
+import net.minecraftforge.common.ForgeMod;
+import net.minecraftforge.event.entity.living.LivingEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
 
+import java.util.UUID;
+
+@Mod.EventBusSubscriber(modid = "cozy_clothing_mod")
 public class WelliesItem extends ArmorItem {
-    // Cache the last water state
-    private boolean wasInShallowWater = false;
+
+    // Unique UUID for our swim speed modifier
+    private static final UUID WELLIES_SWIM_SPEED_UUID = UUID.fromString("a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+    private static final String WELLIES_SWIM_SPEED_NAME = "Wellies Swim Speed";
 
     public WelliesItem(ArmorMaterial material, Type type, Properties properties) {
         super(material, type, properties);
@@ -24,116 +33,43 @@ public class WelliesItem extends ArmorItem {
     }
 
     /**
-     * Called every tick for items in inventory - hijacks Depth Strider enchantment
+     * Event handler that manages swim speed when wearing wellies
      */
-    @Override
-    public void inventoryTick(ItemStack stack, Level level, Entity entity, int slotId, boolean isSelected) {
-        if (level.isClientSide() || !(entity instanceof Player player)) {
+    @SubscribeEvent
+    public static void onLivingUpdate(LivingEvent.LivingTickEvent event) {
+        if (!(event.getEntity() instanceof Player player)) {
             return;
         }
 
-        // Only process if this item is actually equipped as boots
-        ItemStack equippedBoots = player.getItemBySlot(EquipmentSlot.FEET);
-        if (equippedBoots != stack) {
-            // If this stack is not the equipped boots, remove any fake enchantments
-            if (wasInShallowWater) {
-                removeFakeDepthStrider(stack);
-                wasInShallowWater = false;
-            }
+        // Only check every 10 ticks to reduce performance impact
+        if (player.level().getGameTime() % 10 != 0) {
             return;
         }
 
-        // Now we know these wellies are equipped
-        boolean currentlyInShallowWater = isInShallowWater(player, level);
+        // Check if player is wearing our wellies
+        ItemStack boots = player.getItemBySlot(EquipmentSlot.FEET);
+        boolean wearingWellies = !boots.isEmpty() && boots.getItem() instanceof WelliesItem;
 
-        // Debug output every 20 ticks (once per second)
-        if (level.getGameTime() % 20 == 0) {
-            System.out.println("Wellies Debug - InWater: " + currentlyInShallowWater +
-                    ", WasInWater: " + wasInShallowWater +
-                    ", PlayerInWater: " + player.isInWater());
-        }
-
-        // Apply/remove fake Depth Strider enchantment
-        if (currentlyInShallowWater && !wasInShallowWater) {
-            applyFakeDepthStrider(stack);
-            wasInShallowWater = true;
-            System.out.println("Applied fake Depth Strider III to wellies!");
-        } else if (!currentlyInShallowWater && wasInShallowWater) {
-            removeFakeDepthStrider(stack);
-            wasInShallowWater = false;
-            System.out.println("Removed fake Depth Strider from wellies!");
-        }
-
-        super.inventoryTick(stack, level, entity, slotId, isSelected);
-    }
-
-    /**
-     * Adds a fake Depth Strider III enchantment to the boots
-     */
-    private void applyFakeDepthStrider(ItemStack stack) {
-        CompoundTag tag = stack.getOrCreateTag();
-        ListTag enchantments = tag.getList("Enchantments", 10);
-
-        // Check if Depth Strider is already present
-        boolean hasDepthStrider = false;
-        for (int i = 0; i < enchantments.size(); i++) {
-            CompoundTag enchant = enchantments.getCompound(i);
-            String id = enchant.getString("id");
-            if ("minecraft:depth_strider".equals(id) || "depth_strider".equals(id)) {
-                // Update existing Depth Strider to level III
-                enchant.putShort("lvl", (short) 3);
-                hasDepthStrider = true;
-                break;
-            }
-        }
-
-        // If no Depth Strider exists, add it
-        if (!hasDepthStrider) {
-            CompoundTag depthStriderTag = new CompoundTag();
-            depthStriderTag.putString("id", "minecraft:depth_strider");
-            depthStriderTag.putShort("lvl", (short) 3);
-            enchantments.add(depthStriderTag);
-        }
-
-        tag.put("Enchantments", enchantments);
-        stack.setTag(tag);
-    }
-
-    /**
-     * Removes the fake Depth Strider enchantment from the boots
-     */
-    private void removeFakeDepthStrider(ItemStack stack) {
-        CompoundTag tag = stack.getTag();
-        if (tag == null) return;
-
-        ListTag enchantments = tag.getList("Enchantments", 10);
-
-        // Remove Depth Strider enchantment
-        for (int i = enchantments.size() - 1; i >= 0; i--) {
-            CompoundTag enchant = enchantments.getCompound(i);
-            String id = enchant.getString("id");
-            if ("minecraft:depth_strider".equals(id) || "depth_strider".equals(id)) {
-                enchantments.remove(i);
-                break;
-            }
-        }
-
-        tag.put("Enchantments", enchantments);
-        stack.setTag(tag);
-    }
-
-    /**
-     * Simplified water detection - any water contact
-     */
-    private boolean isInShallowWater(Player player, Level level) {
-        // Just check if player is in any water
+        // Check if player is in water
         boolean inWater = player.isInWater();
 
-        // Debug output
-        if (inWater) {
-            System.out.println("Player in water - applying Depth Strider effect");
-        }
+        // Check if we currently have the swim speed modifier
+        boolean hasModifier = player.getAttribute(ForgeMod.SWIM_SPEED.get())
+                .getModifier(WELLIES_SWIM_SPEED_UUID) != null;
 
-        return inWater;
+        // Apply or remove modifier based on conditions
+        if (wearingWellies && inWater && !hasModifier) {
+            // Add swim speed boost - much more conservative
+            AttributeModifier swimSpeedModifier = new AttributeModifier(
+                    WELLIES_SWIM_SPEED_UUID,
+                    WELLIES_SWIM_SPEED_NAME,
+                    0.8, // 30% increase in swim speed (much more reasonable)
+                    AttributeModifier.Operation.MULTIPLY_TOTAL
+            );
+            player.getAttribute(ForgeMod.SWIM_SPEED.get()).addPermanentModifier(swimSpeedModifier);
+        } else if ((!wearingWellies || !inWater) && hasModifier) {
+            // Remove swim speed boost
+            player.getAttribute(ForgeMod.SWIM_SPEED.get()).removeModifier(WELLIES_SWIM_SPEED_UUID);
+        }
     }
 }
